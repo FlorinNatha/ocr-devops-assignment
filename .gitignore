@@ -1,0 +1,42 @@
+# Python cache and test artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# Local Python environments
+.venv/
+venv/
+env/
+ENV/
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Local application output
+*.log
+*.tmp
+*.swp
+
+# IDE and operating-system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Build and packaging output
+dist/
+build/
+*.egg-info/
+
+# Local Kubernetes and Docker overrides
+docker-compose.override.yml
+kind-config.yaml
