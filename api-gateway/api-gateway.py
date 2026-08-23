@@ -3,10 +3,11 @@ from fastapi.responses import JSONResponse
 import requests
 import base64
 import json
+import os
 
 app = FastAPI()
 
-KSERVE_URL = "http://localhost:8080/v2/models/ocr-model/infer" # Your KServe model server URL
+KSERVE_URL = os.getenv("KSERVE_URL" , "http://localhost:8080/v2/models/ocr-model/infer") # Your KServe model server URL
 
 @app.post("/gateway/ocr")
 async def gateway_ocr_request(image_file: UploadFile = File(...)):
