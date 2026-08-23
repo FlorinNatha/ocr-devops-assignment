@@ -1,7 +1,7 @@
 # Python 3.12 satisfies the project's >=3.11,<3.13 requirement.
 FROM python:3.12-slim-bookworm
 
-# Keep logs visible and avoid unnecessary bytecode files.
+# Keep logs visible and avoid unnecessary Python bytecode files.
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1
@@ -9,12 +9,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 # pytesseract is a Python wrapper; install the Tesseract executable too.
-# Install runtime packages directly; Poetry remains the local-dev tool.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends tesseract-ocr \
     && rm -rf /var/lib/apt/lists/*
 
-# Install only the dependencies imported by the model service.
+# Install direct runtime dependencies with reproducible pins.
 RUN pip install \
     "kserve==0.14.1" \
     "pillow==11.2.1" \

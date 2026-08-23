@@ -1,14 +1,14 @@
 # Python 3.12 satisfies the project's >=3.11,<3.13 requirement.
 FROM python:3.12-slim-bookworm
 
-# Keep logs visible and avoid unnecessary bytecode files.
+# Keep logs visible and avoid unnecessary Python bytecode files.
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1
 
 WORKDIR /app
 
-# Install only the dependencies imported by the gateway service.
+# Install direct runtime dependencies with reproducible pins.
 RUN pip install \
     "fastapi==0.115.14" \
     "requests==2.32.4" \
