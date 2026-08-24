@@ -1,0 +1,25 @@
+# Default settings for the FastAPI gateway chart.
+apiGateway:
+  replicaCount: 1
+  image:
+    repository: api-gateway
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  service:
+    type: NodePort
+    port: 8001
+    targetPort: 8001
+    nodePort: null
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi
+  # The internal Kubernetes Service URL for OCR inference requests.
+  kserveUrl: http://ocr-model:8080/v2/models/ocr-model/infer
+  imagePullSecrets: []
+  serviceAccount:
+    create: true
+    name: ""

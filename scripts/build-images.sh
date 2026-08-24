@@ -17,4 +17,5 @@ docker build --tag "$GATEWAY_IMAGE" ./api-gateway
 
 echo
 echo "Images built successfully:"
-docker image ls "$MODEL_IMAGE" "$GATEWAY_IMAGE"
+docker image ls "$MODEL_IMAGE"
+docker image ls "$GATEWAY_IMAGE"
