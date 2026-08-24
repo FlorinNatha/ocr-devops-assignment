@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -euo pipefail  #Makes the Bash script stop immediately when an error, undefined variable, or pipeline failure occurs.
 
 MODEL_IMAGE="${MODEL_IMAGE:-ocr-model:1.0.0}"
 GATEWAY_IMAGE="${GATEWAY_IMAGE:-api-gateway:1.0.0}"

@@ -43,7 +43,7 @@ echo "Waiting for OCR model readiness..."
 
 MODEL_READY=false
 
-for attempt in {1..60}; do
+for _ in {1..60}; do
     if docker exec "$MODEL_CONTAINER" python -c \
         "import urllib.request; response = urllib.request.urlopen('http://127.0.0.1:8080/v2/health/ready'); raise SystemExit(0 if response.status == 200 else 1)" \
         2>/dev/null; then
@@ -75,7 +75,7 @@ echo "Waiting for API gateway readiness..."
 
 GATEWAY_READY=false
 
-for attempt in {1..60}; do
+for _ in {1..60}; do
     if curl --fail --silent "$GATEWAY_DOCS_URL" >/dev/null; then
         GATEWAY_READY=true
         break
