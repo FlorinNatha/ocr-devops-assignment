@@ -45,7 +45,7 @@ spec:
           envFrom:
             - configMapRef:
                 name: {{ include "api-gateway.fullname" . }}-config
-          readinessProbe:
+          readinessProbe: #trafic eka gnn puluend balnwa
             httpGet:
               path: /docs
               port: http
@@ -53,7 +53,7 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 3
             failureThreshold: 6
-          livenessProbe:
+          livenessProbe: #container eka healthyd balnwa(run wenwda balanwa)
             # Restart the container if the gateway stops serving HTTP.
             httpGet:
               path: /docs
@@ -61,7 +61,7 @@ spec:
             initialDelaySeconds: 20
             periodSeconds: 20
             timeoutSeconds: 3
-            failureThreshold: 3
+            failureThreshold: 3 # 3 parak fail wenwd balnwa
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
