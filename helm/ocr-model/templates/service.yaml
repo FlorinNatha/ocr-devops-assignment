@@ -1,0 +1,18 @@
+# Internal Service used by the API gateway to reach the model.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ocr-model.fullname" . }}
+  labels:
+    app.kubernetes.io/name: {{ include "ocr-model.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  type: {{ .Values.ocrModel.service.type }}
+  selector:
+    app.kubernetes.io/name: {{ include "ocr-model.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  ports:
+    - name: http
+      port: {{ .Values.ocrModel.service.port }}
+      targetPort: {{ .Values.ocrModel.service.targetPort }}
+      protocol: TCP

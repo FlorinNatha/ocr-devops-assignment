@@ -1,0 +1,7 @@
+# Chart metadata used by Helm when packaging and installing the OCR model.
+apiVersion: v2
+name: ocr-model
+description: Helm chart for the KServe OCR model
+version: 0.1.0
+appVersion: "1.0.0"
+type: application

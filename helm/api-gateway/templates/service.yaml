@@ -1,0 +1,21 @@
+# Exposes the gateway outside the Minikube cluster through a NodePort.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "api-gateway.fullname" . }}
+  labels:
+    app.kubernetes.io/name: {{ include "api-gateway.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  type: {{ .Values.apiGateway.service.type }}
+  selector:
+    app.kubernetes.io/name: {{ include "api-gateway.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  ports:
+    - name: http
+      port: {{ .Values.apiGateway.service.port }}
+      targetPort: {{ .Values.apiGateway.service.targetPort }}
+      protocol: TCP
+      {{- if .Values.apiGateway.service.nodePort }}
+      nodePort: {{ .Values.apiGateway.service.nodePort }}
+      {{- end }}
