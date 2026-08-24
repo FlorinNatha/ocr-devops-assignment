@@ -1,0 +1,78 @@
+defaultRules:
+  create: true
+
+alertmanager:
+  enabled: false
+
+grafana:
+  enabled: true
+  replicas: 1
+  defaultDashboardsEnabled: false
+  image:
+    repository: grafana/grafana
+    tag: 11.5.2
+    pullPolicy: IfNotPresent
+  adminUser: admin
+  adminPassword: change-me-locally
+  grafana.ini:
+    plugins:
+      disable_plugins: tempo
+  persistence:
+    enabled: false
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 768Mi
+  service:
+    type: ClusterIP
+
+prometheus:
+  enabled: true
+  service:
+    type: ClusterIP
+  prometheusSpec:
+    replicas: 1
+    retention: 1d
+    retentionSize: 2GB
+    walCompression: true
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: 700m
+        memory: 1Gi
+    storageSpec:
+      emptyDir: {}
+
+kube-state-metrics:
+  enabled: true
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+prometheus-node-exporter:
+  enabled: true
+  resources:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi
+
+prometheusOperator:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi
