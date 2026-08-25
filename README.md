@@ -298,6 +298,26 @@ helm version
 
 > Docker Desktop must be running in Linux container mode before Minikube starts.
 
+### Key Infrastructure Subtasks & Implementation
+
+1. **Minikube Cluster Sizing:** Provisions a single-node local Kubernetes cluster with Docker driver configured for 4 CPUs, 7 GB RAM, and 30 GB disk space.
+2. **ArgoCD Deployment:** Deploys ArgoCD from the official Helm chart (`argo/argo-cd`) into the `argocd` namespace.
+3. **Prometheus & Grafana Stack:** Deploys the monitoring stack from `prometheus-community/kube-prometheus-stack` into the `monitoring` namespace.
+4. **Helm Values & Resource Optimization for Local Minikube:** Custom values files are provided to prevent OOM kills, CPU throttling, and image pull timeouts:
+   - **ArgoCD Values (`argocd/values.yaml`):**
+     - Scaled all components to single replicas (`replicas: 1`).
+     - Set `progressDeadlineSeconds: 1200` to prevent Kubernetes deployment failures during slow image downloads.
+     - Disabled unnecessary heavy sub-components (`dex.enabled: false`, `notifications.enabled: false`).
+     - Defined low CPU/memory requests (`100m-250m` CPU, `128Mi-512Mi` RAM) and sensible limits.
+     - Configured `existingSecret: argocd-redis` to use pre-created K8s secrets instead of ephemeral init containers.
+   - **Monitoring Values (`monitoring/values.yaml`):**
+     - Single replicas for Prometheus and Grafana.
+     - Disabled Alertmanager (`alertmanager.enabled: false`) to conserve RAM.
+     - Set short data retention (`retention: 1d`, `retentionSize: 2GB`) and `emptyDir` storage for ephemeral local development.
+     - Disabled default dashboards (`defaultDashboardsEnabled: false`) and heavy plugins (`disable_plugins: tempo`) for fast Grafana startup.
+     - Explicit low resource limits for operator, node-exporter, and kube-state-metrics.
+5. **Idempotent Automation:** Automated via `infrastructure/setup-infrastructure.sh` using `helm upgrade --install`.
+
 ### Automated Setup (Recommended)
 
 Run the full setup from Git Bash or WSL at the repository root:
@@ -307,19 +327,20 @@ chmod +x infrastructure/setup-infrastructure.sh
 bash infrastructure/setup-infrastructure.sh
 ```
 
-The script:
+The script performs complete end-to-end provisioning:
 1. Checks for required tools (Docker, Minikube, kubectl, Helm)
 2. Starts Minikube with Docker driver (4 CPUs, 7 GB RAM, 30 GB disk)
 3. Enables Metrics Server and Dashboard addons
-4. Creates `argocd`, `monitoring`, and `ocr` namespaces (idempotent)
-5. Adds and updates Helm repositories
-6. Pre-pulls the ArgoCD image into Minikube to prevent deployment timeouts
-7. Applies the Redis secret from `argocd/redis-secret.yaml`
-8. Installs/upgrades ArgoCD with `--timeout 30m`
-9. Applies the Grafana admin secret from `monitoring/grafana-secret.yaml`
-10. Installs/upgrades Prometheus + Grafana with `--timeout 30m`
-11. Applies Prometheus PodMonitor and Grafana dashboard resources
-12. Prints final cluster and pod status
+4. Creates `argocd`, `monitoring`, and `ocr` namespaces idempotently
+5. Pre-pulls ArgoCD image and applies `argocd-redis` secret
+6. Installs/upgrades ArgoCD Helm chart
+7. Applies `grafana-admin-credentials` secret and installs Prometheus + Grafana stack
+8. Applies `PodMonitor` and Grafana dashboard ConfigMap for OCR model & Gateway metrics
+9. Builds local Docker images (`ocr-model:1.0.0` & `api-gateway:1.0.0`)
+10. Loads images directly into Minikube cluster storage (`minikube image load`)
+11. Deploys `ocr-model` and `api-gateway` Helm charts into `ocr` namespace
+12. Applies ArgoCD GitOps resources (`project.yaml` and `apps.yaml`)
+13. Displays cluster status and port-forwarding access instructions
 
 ### Manual Setup (Step by Step)
 
@@ -458,54 +479,93 @@ monitoring   monitoring   deployed
 
 ## Task 4: Kubernetes Deployment with Helm
 
-Two Helm charts are maintained in `helm/`:
+To ensure scalable, reproducible, and easily configurable deployments, **Helm** was chosen as the package manager for Kubernetes. Two separate Helm charts are maintained in `helm/` to manage the microservices independently:
 
-- `helm/ocr-model` — KServe OCR model backend (ClusterIP on 8080)
-- `helm/api-gateway` — FastAPI gateway (NodePort on 8001)
+- `helm/ocr-model` — KServe OCR model backend (`ClusterIP` service on port `8080`)
+- `helm/api-gateway` — FastAPI gateway (`NodePort` service on port `8001`)
 
-### Kubernetes Resources Per Chart
+### Implementation Details & Resource Breakdown
 
-| Resource | Purpose |
-|---|---|
-| `Deployment` | Manages pod replicas; configured with liveness/readiness probes |
-| `Service` | Exposes the pod (ClusterIP for model, NodePort for gateway) |
-| `ConfigMap` | Injects `KSERVE_URL` env var into gateway without hardcoding |
-| `ServiceAccount` | Dedicated non-default account per pod |
-| `Role` + `RoleBinding` | Least-privilege RBAC for each service account |
+#### 1. Kubernetes Resource Architecture Per Chart
 
-### Security Contexts
+| Resource | Purpose | Key Details |
+|---|---|---|
+| `Deployment` | Manages pod replicas and lifecycle | Configured with probes, resource limits, security contexts, and `/tmp` mounts |
+| `Service` | Exposes internal and external endpoints | `ClusterIP` on 8080 for backend model; `NodePort` on 8001 for gateway |
+| `ConfigMap` | Non-sensitive runtime configuration | Dynamically injects `KSERVE_URL` (`http://ocr-model.ocr.svc.cluster.local:8080/v2/models/ocr-model/infer`) |
+| `ServiceAccount` | Dedicated workload identity | Avoids using default namespace service account |
+| `Role` & `RoleBinding` | Least-privilege RBAC | Restricts pod API permissions to minimum required scope |
 
-All containers are hardened:
+#### 2. Probes & Health Checks
+- **OCR Model:** Configured `livenessProbe` and `readinessProbe` checking the KServe V2 health endpoint `/v2/health/ready` on port `8080`.
+- **API Gateway:** Configured `livenessProbe` and `readinessProbe` checking the FastAPI `/docs` OpenAPI specification endpoint on port `8001`. Traffic is routed only when containers are ready.
 
+#### 3. Security Hardening & Storage Mounts
+All deployment containers strictly enforce security best practices:
 ```yaml
 securityContext:
   runAsNonRoot: true
+  readOnlyRootFilesystem: true
   capabilities:
     drop: [ALL]
-  readOnlyRootFilesystem: true
+```
+To support temporary operations (such as processing uploaded image files in FastAPI/Tesseract) while maintaining `readOnlyRootFilesystem: true`, an `emptyDir` volume is explicitly mounted to `/tmp`:
+```yaml
+volumeMounts:
+  - name: tmp
+    mountPath: /tmp
+volumes:
+  - name: tmp
+    emptyDir: {}
 ```
 
-### Manual Helm Deployment
+#### 4. Dynamic Image Pull Secrets
+Both `deployment.yaml` files include conditional templating (`{{- if .Values.imagePullSecrets }}`). Although public Docker Hub images are currently used, private registry credentials can be injected via `values.yaml` without altering chart templates.
 
+#### 5. Resource Allocations & Quotas
+Resource requests and limits are defined per service to guarantee predictability on local Minikube nodes:
+
+| Chart | CPU Request / Limit | Memory Request / Limit |
+|---|---|---|
+| `helm/ocr-model` | `250m` / `1000m` | `512Mi` / `1536Mi` |
+| `helm/api-gateway` | `100m` / `500m` | `128Mi` / `512Mi` |
+
+---
+
+### Step-by-Step Instructions for Manual Helm Deployment
+
+#### Step 1: Deploy OCR Model Backend
+Deploy the backend model chart first so it is initialized before receiving gateway traffic:
 ```bash
-# Deploy OCR model first (backend)
 helm upgrade --install ocr-model ./helm/ocr-model \
   --namespace ocr --create-namespace
-
-# Deploy API gateway
-helm upgrade --install api-gateway ./helm/api-gateway \
-  --namespace ocr
-
-# Verify
-kubectl get all -n ocr
-
-# Port-forward to test
-kubectl port-forward svc/api-gateway -n ocr 8001:8001
-# Open: http://localhost:8001/docs
 ```
 
-### Cleanup
+#### Step 2: Deploy API Gateway
+Deploy the API Gateway chart, which automatically resolves the model service via the ConfigMap injected `KSERVE_URL`:
+```bash
+helm upgrade --install api-gateway ./helm/api-gateway \
+  --namespace ocr
+```
 
+#### Step 3: Verify Deployments
+Ensure all pods and services in the `ocr` namespace are in the `Running` state:
+```bash
+kubectl get all -n ocr
+```
+
+#### Step 4: Test via Port-Forwarding & Swagger UI
+Port-forward the API Gateway service to your local workstation:
+```bash
+kubectl port-forward svc/api-gateway -n ocr 8001:8001
+```
+
+Access the interactive OpenAPI / Swagger documentation:
+- Open browser to **`http://localhost:8001/docs`**
+- Test `POST /gateway/ocr` with an image upload.
+
+#### Step 5: Clean Up (Optional)
+To remove both releases from the cluster:
 ```bash
 helm uninstall api-gateway -n ocr
 helm uninstall ocr-model -n ocr
@@ -513,43 +573,7 @@ helm uninstall ocr-model -n ocr
 
 ---
 
-## Task 5: KServe Model Monitoring
-
-### Prometheus PodMonitor (`monitoring/kserve-podmonitor.yaml`)
-
-Instructs the Prometheus Operator to scrape the OCR model pods on port `8080/metrics`:
-
-```yaml
-apiVersion: monitoring.coreos.com/v1
-kind: PodMonitor
-metadata:
-  name: kserve-ocr-model
-  namespace: monitoring
-spec:
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: ocr-model
-  podMetricsEndpoints:
-    - port: http
-      path: /metrics
-```
-
-### Grafana Dashboard — KServe OCR Model Monitoring
-
-The dashboard (`monitoring/kserve-dashboard-configmap.yaml`) is auto-loaded by the Grafana sidecar (enabled in `monitoring/values.yaml`). It includes:
-
-| Panel | PromQL |
-|---|---|
-| Total Inference Requests | `sum(increase(kserve_request_total[5m]))` |
-| Request Rate (req/s) | `sum(rate(kserve_request_total[1m]))` |
-| Inference Latency (p95) | `histogram_quantile(0.95, rate(kserve_request_duration_seconds_bucket[5m]))` |
-| Error Rate (%) | `sum(rate(kserve_request_total{status!="200"}[5m])) / sum(rate(kserve_request_total[5m])) * 100` |
-| CPU Usage | `sum(rate(container_cpu_usage_seconds_total{pod=~"ocr-model.*"}[5m])) by (pod)` |
-| Memory Usage | `sum(container_memory_working_set_bytes{pod=~"ocr-model.*"}) by (pod)` |
-
----
-
-## Task 6: GitOps with ArgoCD
+## Task 5: GitOps with ArgoCD
 
 ### How It Works
 
@@ -600,6 +624,61 @@ Both applications have:
 kubectl get applications -n argocd
 kubectl describe application api-gateway -n argocd
 ```
+
+---
+
+## Task 6: KServe & Gateway Monitoring
+
+### Prometheus PodMonitor (`monitoring/kserve-podmonitor.yaml`)
+
+Instructs the Prometheus Operator to scrape metrics endpoints from both the OCR model (ports `8080` & `8082`) and the API Gateway (port `8001` via `prometheus-fastapi-instrumentator`):
+
+```yaml
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: ocr-model-podmonitor
+  namespace: monitoring
+  labels:
+    release: monitoring
+spec:
+  namespaceSelector:
+    matchNames:
+      - ocr
+  selector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values:
+          - ocr-model
+          - api-gateway
+  podMetricsEndpoints:
+    - targetPort: 8080
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s
+    - targetPort: 8082
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s
+    - targetPort: 8001
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s
+```
+
+### Grafana Dashboard — KServe & Gateway Monitoring
+
+The dashboard (`monitoring/kserve-dashboard-configmap.yaml`) is auto-loaded by the Grafana sidecar (enabled in `monitoring/values.yaml` via `sidecar.dashboards.enabled=true`). It uses fallback PromQL expressions with `or vector(0)` to support multiple metric formats seamlessly:
+
+| Panel | PromQL Expression |
+|---|---|
+| Total Inference Requests | `(sum(request_count_total{namespace="ocr"}) or sum(kserve_request_count_total{namespace="ocr"}) or sum(revision_request_count{namespace="ocr"}) or sum(http_requests_total{namespace="ocr"})) or vector(0)` |
+| Request Rate (req/s) | `(sum(rate(request_count_total{namespace="ocr"}[5m])) by (pod) or sum(rate(kserve_request_count_total{namespace="ocr"}[5m])) by (pod) or sum(rate(revision_request_count{namespace="ocr"}[5m])) by (pod)) or vector(0)` |
+| Inference Latency (P50/P90/P99) | `(histogram_quantile(0.95, sum(rate(request_latency_seconds_bucket{namespace="ocr"}[5m])) by (le)) * 1000) or vector(0)` |
+| Error Rate (req/s) | `(sum(rate(request_count_total{namespace="ocr", code!~"2.."}[5m])) or sum(rate(revision_request_count{namespace="ocr", response_code_class!="2xx"}[5m]))) or vector(0)` |
+| CPU Usage per Pod | `sum(rate(container_cpu_usage_seconds_total{namespace="ocr", pod=~".+"}[5m])) by (pod)` |
+| Memory Working Set | `sum(container_memory_working_set_bytes{namespace="ocr", pod=~".+"}) by (pod)` |
 
 ---
 
@@ -664,7 +743,7 @@ metadata:
   namespace: argocd
 type: Opaque
 stringData:
-  auth: "replace-with-strong-password"
+  auth: "argoRedisPass123"
 ```
 
 **`monitoring/grafana-secret.yaml`:**
@@ -678,7 +757,7 @@ metadata:
 type: Opaque
 stringData:
   admin-user: admin
-  admin-password: "replace-with-strong-password"
+  admin-password: "adminPass"
 ```
 
 ---

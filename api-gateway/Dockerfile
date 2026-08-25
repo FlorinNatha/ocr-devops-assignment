@@ -11,8 +11,10 @@ WORKDIR /app
 # Install direct runtime dependencies with reproducible pins.
 RUN pip install \
     "fastapi==0.115.14" \
+    "uvicorn==0.34.0" \
     "requests==2.32.4" \
-    "python-multipart==0.0.20"
+    "python-multipart==0.0.20" \
+    "prometheus-fastapi-instrumentator==7.0.0"
 
 # Copy source after dependencies to preserve Docker layer caching.
 COPY api-gateway.py ./

@@ -67,5 +67,11 @@ spec:
             readOnlyRootFilesystem: true
             capabilities:
               drop: [ALL]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
           resources:
             {{- toYaml .Values.apiGateway.resources | nindent 12 }}
+      volumes:
+        - name: tmp
+          emptyDir: {}

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
 ARGO_NAMESPACE="argocd"
 MONITORING_NAMESPACE="monitoring"
 OCR_NAMESPACE="ocr"
@@ -98,7 +98,7 @@ echo "  Pre-pulling ArgoCD image v${ARGOCD_VERSION} into Minikube..."
 minikube image pull "quay.io/argoproj/argocd:v${ARGOCD_VERSION}" || \
   echo "  ⚠️  Image pre-pull failed (non-fatal, Helm will pull during install)"
 
-helm upgrade --install argocd argo/argo-cd \
+retry helm upgrade --install argocd argo/argo-cd \
   --namespace "$ARGO_NAMESPACE" \
   --values "$PROJECT_ROOT/argocd/values.yaml" \
   --wait \
@@ -116,15 +116,34 @@ fi
 echo "Installing Prometheus and Grafana..."
 # Same stale-hook cleanup for the monitoring stack.
 kubectl delete jobs -n "$MONITORING_NAMESPACE" --all --ignore-not-found 2>/dev/null || true
-helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
+retry helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
   --namespace "$MONITORING_NAMESPACE" \
   --values "$PROJECT_ROOT/monitoring/values.yaml" \
   --wait \
   --timeout 30m \
   --cleanup-on-fail
 
+echo "Applying PodMonitor and Grafana dashboard for OCR model..."
+kubectl apply -f "$PROJECT_ROOT/monitoring/kserve-podmonitor.yaml"
+kubectl apply -f "$PROJECT_ROOT/monitoring/kserve-dashboard-configmap.yaml"
+
+echo "Building local Docker images for OCR services..."
+"$PROJECT_ROOT/scripts/build-images.sh"
+
+echo "Loading Docker images into Minikube..."
+minikube image load ocr-model:1.0.0
+minikube image load api-gateway:1.0.0
+
+echo "Deploying OCR model and API gateway via Helm..."
+helm upgrade --install ocr-model "$PROJECT_ROOT/helm/ocr-model" --namespace "$OCR_NAMESPACE" --create-namespace
+helm upgrade --install api-gateway "$PROJECT_ROOT/helm/api-gateway" --namespace "$OCR_NAMESPACE" --create-namespace
+
+echo "Applying ArgoCD project and applications..."
+kubectl apply -f "$PROJECT_ROOT/argocd/project.yaml" || true
+kubectl apply -f "$PROJECT_ROOT/argocd/apps.yaml" || true
+
 echo
-echo "Infrastructure installation completed."
+echo "Infrastructure and ArgoCD applications installation completed."
 echo
 echo "Minikube nodes:"
 kubectl get nodes
@@ -135,7 +154,15 @@ echo
 echo "Monitoring pods:"
 kubectl get pods -n "$MONITORING_NAMESPACE"
 echo
-echo "OCR namespace:"
-kubectl get namespace "$OCR_NAMESPACE"
+echo "OCR namespace pods:"
+kubectl get pods -n "$OCR_NAMESPACE"
 echo
-echo "Run 'kubectl top nodes' after Metrics Server becomes ready."
+echo "Access Instructions:"
+echo "  - Grafana (http://localhost:3000):"
+echo "      kubectl port-forward svc/monitoring-grafana 3000:80 -n monitoring"
+echo "      Credentials -> User: admin | Password: adminPass"
+echo "  - Prometheus (http://localhost:9090):"
+echo "      kubectl port-forward svc/monitoring-kube-prometheus-prometheus 9090:9090 -n monitoring"
+echo "  - API Gateway OCR Endpoint (http://localhost:8001/gateway/ocr):"
+echo "      kubectl port-forward svc/api-gateway 8001:8001 -n ocr"
+

@@ -43,7 +43,7 @@ data:
         },
 
         {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "datasource": "Prometheus",
           "description": "Total number of inference requests received by the OCR model since the pod started.",
           "fieldConfig": {
             "defaults": {
@@ -67,7 +67,7 @@ data:
           "type": "stat",
           "targets": [
             {
-              "expr": "sum(revision_request_count{namespace=\"ocr\"})",
+              "expr": "(sum(request_count_total{namespace=\"ocr\"}) or sum(kserve_request_count_total{namespace=\"ocr\"}) or sum(revision_request_count{namespace=\"ocr\"}) or sum(http_requests_total{namespace=\"ocr\"})) or vector(0)",
               "legendFormat": "Total Requests",
               "refId": "A"
             }
@@ -75,7 +75,7 @@ data:
         },
 
         {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "datasource": "Prometheus",
           "description": "Rate of inference requests per second over the last 5 minutes.",
           "fieldConfig": {
             "defaults": { "unit": "reqps", "color": { "mode": "palette-classic" } },
@@ -88,8 +88,8 @@ data:
           "type": "timeseries",
           "targets": [
             {
-              "expr": "sum(rate(revision_request_count{namespace=\"ocr\"}[5m])) by (revision_name)",
-              "legendFormat": "{{ revision_name }}",
+              "expr": "(sum(rate(request_count_total{namespace=\"ocr\"}[5m])) by (pod) or sum(rate(kserve_request_count_total{namespace=\"ocr\"}[5m])) by (pod) or sum(rate(revision_request_count{namespace=\"ocr\"}[5m])) by (pod) or sum(rate(http_requests_total{namespace=\"ocr\"}[5m])) by (pod)) or vector(0)",
+              "legendFormat": "{{ pod }}",
               "refId": "A"
             }
           ]
@@ -104,7 +104,7 @@ data:
         },
 
         {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "datasource": "Prometheus",
           "description": "Rate of failed (non-2xx) inference requests per second.",
           "fieldConfig": {
             "defaults": {
@@ -128,7 +128,7 @@ data:
           "type": "stat",
           "targets": [
             {
-              "expr": "sum(rate(revision_request_count{namespace=\"ocr\", response_code_class!=\"2xx\"}[5m]))",
+              "expr": "(sum(rate(http_requests_total{namespace=\"ocr\", status!~\"2..\"}[5m])) or sum(rate(http_requests_total{namespace=\"ocr\", status_code!~\"2..\"}[5m])) or sum(rate(request_count_total{namespace=\"ocr\", code!~\"2..\"}[5m])) or sum(rate(kserve_request_count_total{namespace=\"ocr\", code!~\"2..\"}[5m])) or sum(rate(revision_request_count{namespace=\"ocr\", response_code_class!=\"2xx\"}[5m]))) or vector(0)",
               "legendFormat": "Error Rate",
               "refId": "A"
             }
@@ -136,7 +136,7 @@ data:
         },
 
         {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "datasource": "Prometheus",
           "description": "Breakdown of request rate by HTTP response class (2xx, 4xx, 5xx).",
           "fieldConfig": {
             "defaults": { "unit": "reqps", "color": { "mode": "palette-classic" } },
@@ -149,8 +149,8 @@ data:
           "type": "timeseries",
           "targets": [
             {
-              "expr": "sum(rate(revision_request_count{namespace=\"ocr\"}[5m])) by (response_code_class)",
-              "legendFormat": "{{ response_code_class }}",
+              "expr": "(sum(rate(http_requests_total{namespace=\"ocr\"}[5m])) by (status) or sum(rate(request_count_total{namespace=\"ocr\"}[5m])) by (code) or sum(rate(kserve_request_count_total{namespace=\"ocr\"}[5m])) by (code) or sum(rate(revision_request_count{namespace=\"ocr\"}[5m])) by (response_code_class)) or vector(0)",
+              "legendFormat": "{{ status }}",
               "refId": "A"
             }
           ]
@@ -165,7 +165,7 @@ data:
         },
 
         {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "datasource": "Prometheus",
           "description": "Inference latency percentiles (P50, P90, P99) in milliseconds over a 5-minute window.",
           "fieldConfig": {
             "defaults": { "unit": "ms", "color": { "mode": "palette-classic" } },
@@ -178,17 +178,17 @@ data:
           "type": "timeseries",
           "targets": [
             {
-              "expr": "histogram_quantile(0.50, sum(rate(revision_request_latencies_bucket{namespace=\"ocr\"}[5m])) by (le))",
+              "expr": "(histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket{namespace=\"ocr\"}[5m])) by (le)) * 1000) or (histogram_quantile(0.50, sum(rate(request_latency_seconds_bucket{namespace=\"ocr\"}[5m])) by (le)) * 1000) or (histogram_quantile(0.50, sum(rate(kserve_request_latencies_seconds_bucket{namespace=\"ocr\"}[5m])) by (le)) * 1000) or (histogram_quantile(0.50, sum(rate(revision_request_latencies_bucket{namespace=\"ocr\"}[5m])) by (le)) * 1000) or vector(0)",
               "legendFormat": "P50",
               "refId": "A"
             },
             {
-              "expr": "histogram_quantile(0.90, sum(rate(revision_request_latencies_bucket{namespace=\"ocr\"}[5m])) by (le))",
+              "expr": "(histogram_quantile(0.90, sum(rate(http_request_duration_seconds_bucket{namespace=\"ocr\"}[5m])) by (le)) * 1000) or (histogram_quantile(0.90, sum(rate(request_latency_seconds_bucket{namespace=\"ocr\"}[5m])) by (le)) * 1000) or (histogram_quantile(0.90, sum(rate(kserve_request_latencies_seconds_bucket{namespace=\"ocr\"}[5m])) by (le)) * 1000) or (histogram_quantile(0.90, sum(rate(revision_request_latencies_bucket{namespace=\"ocr\"}[5m])) by (le)) * 1000) or vector(0)",
               "legendFormat": "P90",
               "refId": "B"
             },
             {
-              "expr": "histogram_quantile(0.99, sum(rate(revision_request_latencies_bucket{namespace=\"ocr\"}[5m])) by (le))",
+              "expr": "(histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{namespace=\"ocr\"}[5m])) by (le)) * 1000) or (histogram_quantile(0.99, sum(rate(request_latency_seconds_bucket{namespace=\"ocr\"}[5m])) by (le)) * 1000) or (histogram_quantile(0.99, sum(rate(kserve_request_latencies_seconds_bucket{namespace=\"ocr\"}[5m])) by (le)) * 1000) or (histogram_quantile(0.99, sum(rate(revision_request_latencies_bucket{namespace=\"ocr\"}[5m])) by (le)) * 1000) or vector(0)",
               "legendFormat": "P99",
               "refId": "C"
             }
@@ -196,7 +196,7 @@ data:
         },
 
         {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "datasource": "Prometheus",
           "description": "Latency heatmap — distribution of request durations over time.",
           "fieldConfig": {
             "defaults": { "color": { "mode": "scheme", "scheme": "Blues" }, "custom": { "fillOpacity": 80, "lineWidth": 0 } },
@@ -209,7 +209,7 @@ data:
           "type": "heatmap",
           "targets": [
             {
-              "expr": "sum(increase(revision_request_latencies_bucket{namespace=\"ocr\"}[$__rate_interval])) by (le)",
+              "expr": "sum(increase(http_request_duration_seconds_bucket{namespace=\"ocr\"}[$__rate_interval])) by (le) or sum(increase(request_latency_seconds_bucket{namespace=\"ocr\"}[$__rate_interval])) by (le) or sum(increase(kserve_request_latencies_seconds_bucket{namespace=\"ocr\"}[$__rate_interval])) by (le) or sum(increase(revision_request_latencies_bucket{namespace=\"ocr\"}[$__rate_interval])) by (le)",
               "legendFormat": "{{ le }}",
               "refId": "A",
               "format": "heatmap"
@@ -226,7 +226,7 @@ data:
         },
 
         {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "datasource": "Prometheus",
           "description": "CPU usage rate (cores) per OCR model pod over the last 5 minutes.",
           "fieldConfig": {
             "defaults": { "unit": "cores", "color": { "mode": "palette-classic" } },
@@ -239,7 +239,7 @@ data:
           "type": "timeseries",
           "targets": [
             {
-              "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"ocr\", container=\"model\"}[5m])) by (pod)",
+              "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"ocr\", pod=~\".+\"}[5m])) by (pod) or sum(node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate{namespace=\"ocr\"}) by (pod)",
               "legendFormat": "{{ pod }}",
               "refId": "A"
             }
@@ -247,7 +247,7 @@ data:
         },
 
         {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "datasource": "Prometheus",
           "description": "Memory working set (bytes) per OCR model pod.",
           "fieldConfig": {
             "defaults": { "unit": "bytes", "color": { "mode": "palette-classic" } },
@@ -260,7 +260,7 @@ data:
           "type": "timeseries",
           "targets": [
             {
-              "expr": "sum(container_memory_working_set_bytes{namespace=\"ocr\", container=\"model\"}) by (pod)",
+              "expr": "sum(container_memory_working_set_bytes{namespace=\"ocr\", pod=~\".+\"}) by (pod) or sum(container_memory_usage_bytes{namespace=\"ocr\", pod=~\".+\"}) by (pod)",
               "legendFormat": "{{ pod }}",
               "refId": "A"
             }
