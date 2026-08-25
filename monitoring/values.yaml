@@ -12,20 +12,25 @@ grafana:
     repository: grafana/grafana
     tag: 11.5.2
     pullPolicy: IfNotPresent
+  # Admin credentials are injected from a pre-created Secret.
+  # Create the secret with: kubectl apply -f monitoring/grafana-secret.yaml
   adminUser: admin
-  adminPassword: change-me-locally
+  admin:
+    existingSecret: grafana-admin-credentials
+    userKey: admin-user
+    passwordKey: admin-password #password is stored in grafana-secret.yaml
   grafana.ini:
     plugins:
       disable_plugins: tempo
-  persistence:
+  persistence: #to store data even if the pod is deleted (used in production)
     enabled: false
   resources:
     requests:
       cpu: 100m
       memory: 256Mi
     limits:
-      cpu: 500m
-      memory: 768Mi
+      cpu: 800m
+      memory: 1Gi
   service:
     type: ClusterIP
 
@@ -35,44 +40,43 @@ prometheus:
     type: ClusterIP
   prometheusSpec:
     replicas: 1
-    retention: 1d
-    retentionSize: 2GB
-    walCompression: true
+    retention: 1d #for local setup it is ok, but for production it should be 30d
+    retentionSize: 2GB # maximum 2GB data logs can save
+    walCompression: true # write ahead log compression
     resources:
       requests:
-        cpu: 200m
-        memory: 512Mi
+        cpu: 300m
+        memory: 768Mi
       limits:
-        cpu: 700m
-        memory: 1Gi
+        cpu: 1200m
+        memory: 2Gi
     storageSpec:
       emptyDir: {}
-
-kube-state-metrics:
+kube-state-metrics: #its expose the states of kubernetes cluster as metrics eg. node
   enabled: true
   resources:
     requests:
-      cpu: 25m
-      memory: 64Mi
+      cpu: 50m
+      memory: 96Mi
     limits:
-      cpu: 100m
-      memory: 128Mi
+      cpu: 200m
+      memory: 256Mi
 
 prometheus-node-exporter:
   enabled: true
   resources:
     requests:
-      cpu: 25m
-      memory: 32Mi
-    limits:
-      cpu: 100m
+      cpu: 50m
       memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
 
 prometheusOperator:
   resources:
     requests:
-      cpu: 50m
-      memory: 128Mi
+      cpu: 100m
+      memory: 192Mi
     limits:
-      cpu: 300m
-      memory: 256Mi
+      cpu: 500m
+      memory: 384Mi
