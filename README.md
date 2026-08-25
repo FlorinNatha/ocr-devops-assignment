@@ -1,0 +1,697 @@
+# OCR DevOps Assignment
+
+A production-grade OCR (Optical Character Recognition) microservices platform built with Python, Docker, Kubernetes, ArgoCD, and Prometheus/Grafana. This project demonstrates a full end-to-end DevOps workflow from local development to GitOps-driven deployment with monitoring.
+
+---
+
+## Architecture Overview
+
+```
+                          ┌──────────────────────────────────────────────────────────────┐
+                          │                     Minikube Cluster                         │
+                          │                                                              │
+          User / Postman  │  ┌─────────────────┐        ┌─────────────────────────┐    │
+         ───────────────► │  │   API Gateway   │──────► │      OCR Model          │    │
+          POST /gateway/  │  │   (FastAPI)     │        │    (KServe Server)      │    │
+          ocr             │  │   Port: 8001    │        │    Port: 8080           │    │
+                          │  └────────┬────────┘        └────────────┬────────────┘    │
+                          │           │                               │                 │
+                          │  ┌────────▼────────────────────────────────────────────┐   │
+                          │  │                 ArgoCD                               │   │
+                          │  │  Watches GitHub repo → syncs Helm charts → deploys  │   │
+                          │  └─────────────────────────────────────────────────────┘   │
+                          │                                                              │
+                          │  ┌─────────────────────────────────────────────────────┐   │
+                          │  │              Prometheus + Grafana                    │   │
+                          │  │  PodMonitor scrapes :8080/metrics → Dashboards       │   │
+                          │  └─────────────────────────────────────────────────────┘   │
+                          └──────────────────────────────────────────────────────────────┘
+
+ GitHub Repo (main branch)
+ ├── helm/api-gateway/   ◄── ArgoCD watches and auto-deploys on git push
+ └── helm/ocr-model/     ◄── ArgoCD watches and auto-deploys on git push
+```
+
+### Technology Stack
+
+| Layer | Technology |
+|---|---|
+| OCR Engine | Tesseract OCR + pytesseract |
+| Model Server | KServe V2 inference protocol |
+| API Gateway | FastAPI (Python 3.12) |
+| Containers | Docker, Docker Hub |
+| Orchestration | Kubernetes (Minikube) |
+| Package Manager | Helm |
+| GitOps | ArgoCD |
+| Monitoring | Prometheus + Grafana (kube-prometheus-stack) |
+| Automation | Bash scripting |
+
+---
+
+## Repository Structure
+
+```
+ocr-devops-assignment/
+├── ocr-model/                    # KServe OCR model service
+│   ├── model.py
+│   ├── pyproject.toml
+│   ├── poetry.lock
+│   ├── Dockerfile
+│   └── .dockerignore
+├── api-gateway/                  # FastAPI gateway service
+│   ├── api-gateway.py
+│   ├── pyproject.toml
+│   ├── poetry.lock
+│   ├── Dockerfile
+│   └── .dockerignore
+├── helm/
+│   ├── ocr-model/                # Helm chart for OCR model
+│   │   ├── Chart.yaml
+│   │   ├── values.yaml
+│   │   └── templates/
+│   └── api-gateway/              # Helm chart for API gateway
+│       ├── Chart.yaml
+│       ├── values.yaml
+│       └── templates/
+├── argocd/
+│   ├── values.yaml               # ArgoCD Helm values (resource-tuned)
+│   ├── apps.yaml                 # ArgoCD Application CRDs
+│   ├── project.yaml              # ArgoCD Project definition
+│   └── applicationset.yaml       # ArgoCD ApplicationSet
+├── monitoring/
+│   ├── values.yaml               # kube-prometheus-stack Helm values
+│   ├── kserve-podmonitor.yaml    # Prometheus PodMonitor for OCR model
+│   ├── kserve-dashboard-configmap.yaml  # Grafana dashboard ConfigMap
+│   └── grafana-secret.yaml       # Grafana admin secret (git-ignored)
+├── infrastructure/
+│   └── setup-infrastructure.sh  # Full automation script
+├── scripts/
+│   ├── build-images.sh
+│   ├── test-images.sh
+│   ├── push-images.sh
+│   └── cleanup-docker.sh
+├── docs/
+│   ├── containerization.md
+│   ├── infrastructure-setup.md
+│   └── task4-kubernetes-deployment.md
+└── .gitignore
+```
+
+---
+
+## Task 1: Local Setup and Testing
+
+### Prerequisites
+
+- Ubuntu / WSL 2 (recommended for Tesseract compatibility)
+- Python 3.11 or 3.12
+- Poetry
+
+### 1. Install System Dependencies
+
+```bash
+sudo apt update
+sudo apt install -y python3.12 python3.12-venv python3.12-dev tesseract-ocr
+```
+
+### 2. Install Poetry
+
+```bash
+curl -sSL https://install.python-poetry.org | python3 -
+poetry --version
+```
+
+### 3. Start the OCR Model Service (Terminal 1)
+
+```bash
+cd ocr-model
+poetry env use python3.12
+poetry install
+poetry run python model.py
+```
+
+The model listens on port `8080` and exposes a KServe V2 inference endpoint.
+
+### 4. Configure and Start the API Gateway (Terminal 2)
+
+Edit `api-gateway/api-gateway.py` to point to the local model:
+
+```python
+KSERVE_URL = os.getenv(
+    "KSERVE_URL",
+    "http://localhost:8080/v2/models/ocr-model/infer",
+)
+```
+
+Then start the gateway:
+
+```bash
+cd api-gateway
+poetry env use python3.12
+poetry install
+poetry run python api-gateway.py
+```
+
+The gateway listens on port `8001`.
+
+### 5. Test with Postman
+
+| Field | Value |
+|---|---|
+| Method | `POST` |
+| URL | `http://localhost:8001/gateway/ocr` |
+| Body type | `form-data` |
+| Key | `image_file` |
+| Type | `File` |
+
+Select an image containing text and click **Send**. The response returns the extracted text with `200 OK`.
+
+---
+
+## Task 2: Containerization
+
+### Dockerfiles
+
+**OCR Model (`ocr-model/Dockerfile`)**
+
+```dockerfile
+FROM python:3.12-slim-bookworm
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    POETRY_VERSION=2.1.3 \
+    POETRY_VIRTUALENVS_CREATE=false \
+    PATH="/root/.local/bin:$PATH"
+
+WORKDIR /app
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends tesseract-ocr \
+    && pip install --no-cache-dir "poetry==$POETRY_VERSION" \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY pyproject.toml poetry.lock ./
+RUN poetry install --no-root --only main
+COPY model.py ./
+
+RUN useradd --create-home --uid 10001 appuser \
+    && chown -R appuser:appuser /app
+
+USER appuser
+EXPOSE 8080
+CMD ["python", "model.py"]
+```
+
+**API Gateway (`api-gateway/Dockerfile`)**
+
+```dockerfile
+FROM python:3.12-slim-bookworm
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    POETRY_VERSION=2.1.3 \
+    POETRY_VIRTUALENVS_CREATE=false \
+    PATH="/root/.local/bin:$PATH"
+
+WORKDIR /app
+
+RUN pip install --no-cache-dir "poetry==$POETRY_VERSION"
+
+COPY pyproject.toml poetry.lock ./
+RUN poetry install --no-root --only main
+
+COPY api-gateway.py ./
+
+RUN useradd --create-home --uid 10001 appuser \
+    && chown -R appuser:appuser /app
+
+USER appuser
+EXPOSE 8001
+CMD ["python", "api-gateway.py"]
+```
+
+### Build Images
+
+```bash
+bash scripts/build-images.sh
+```
+
+Or manually:
+
+```bash
+docker build -t ocr-model:1.0.0 ./ocr-model
+docker build -t api-gateway:1.0.0 ./api-gateway
+```
+
+### Test Images with Docker Compose
+
+```bash
+bash scripts/test-images.sh
+```
+
+This script creates a Docker network, starts both containers, waits for readiness, and prints the gateway endpoint.
+
+### Push to Docker Hub
+
+```bash
+export DOCKER_USERNAME=your-dockerhub-username
+docker login
+
+docker tag ocr-model:1.0.0 $DOCKER_USERNAME/ocr-devops-assignment:model-1.0.0
+docker tag api-gateway:1.0.0 $DOCKER_USERNAME/ocr-devops-assignment:gateway-1.0.0
+
+docker push $DOCKER_USERNAME/ocr-devops-assignment:model-1.0.0
+docker push $DOCKER_USERNAME/ocr-devops-assignment:gateway-1.0.0
+```
+
+### Cleanup
+
+```bash
+bash scripts/cleanup-docker.sh
+```
+
+### Containerization Decisions
+
+| Decision | Reason |
+|---|---|
+| `python:3.12-slim-bookworm` | Small, stable, compatible with Tesseract on Debian Bookworm |
+| Non-root `appuser` (UID 10001) | Reduces container compromise impact |
+| `--no-root` Poetry install | Avoids missing `README.md` error; project is not a library |
+| Tesseract only in OCR model image | Minimal surface; gateway only forwards HTTP |
+| `.dockerignore` in both services | Excludes `.git`, venvs, cache, logs from build context |
+| Versioned image tags | Makes Kubernetes deployments reproducible |
+
+---
+
+## Task 3: Infrastructure Setup
+
+### Prerequisites
+
+Install and verify on Windows:
+
+```powershell
+docker version
+minikube version
+kubectl version --client
+helm version
+```
+
+> Docker Desktop must be running in Linux container mode before Minikube starts.
+
+### Automated Setup (Recommended)
+
+Run the full setup from Git Bash or WSL at the repository root:
+
+```bash
+chmod +x infrastructure/setup-infrastructure.sh
+bash infrastructure/setup-infrastructure.sh
+```
+
+The script:
+1. Checks for required tools (Docker, Minikube, kubectl, Helm)
+2. Starts Minikube with Docker driver (4 CPUs, 7 GB RAM, 30 GB disk)
+3. Enables Metrics Server and Dashboard addons
+4. Creates `argocd`, `monitoring`, and `ocr` namespaces (idempotent)
+5. Adds and updates Helm repositories
+6. Pre-pulls the ArgoCD image into Minikube to prevent deployment timeouts
+7. Applies the Redis secret from `argocd/redis-secret.yaml`
+8. Installs/upgrades ArgoCD with `--timeout 30m`
+9. Applies the Grafana admin secret from `monitoring/grafana-secret.yaml`
+10. Installs/upgrades Prometheus + Grafana with `--timeout 30m`
+11. Applies Prometheus PodMonitor and Grafana dashboard resources
+12. Prints final cluster and pod status
+
+### Manual Setup (Step by Step)
+
+**Start Minikube:**
+
+```powershell
+minikube start --driver=docker --cpus=4 --memory=7168 --disk-size=30g
+minikube addons enable metrics-server
+minikube addons enable dashboard
+```
+
+**Add Helm Repositories:**
+
+```bash
+helm repo add argo https://argoproj.github.io/argo-helm
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
+```
+
+**Create Namespaces:**
+
+```bash
+kubectl create namespace argocd
+kubectl create namespace monitoring
+kubectl create namespace ocr
+```
+
+**Create Secrets (before Helm install):**
+
+> These files are git-ignored. Create them manually before running the script.
+
+`argocd/redis-secret.yaml`:
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: argocd-redis
+  namespace: argocd
+type: Opaque
+stringData:
+  auth: "your-redis-password"
+```
+
+`monitoring/grafana-secret.yaml`:
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: grafana-admin-credentials
+  namespace: monitoring
+type: Opaque
+stringData:
+  admin-user: admin
+  admin-password: "your-grafana-password"
+```
+
+**Install ArgoCD:**
+
+```bash
+kubectl apply -f argocd/redis-secret.yaml
+helm upgrade --install argocd argo/argo-cd \
+  --namespace argocd \
+  --values argocd/values.yaml \
+  --wait --timeout 30m --cleanup-on-fail
+```
+
+**Install Monitoring Stack:**
+
+```bash
+kubectl apply -f monitoring/grafana-secret.yaml
+helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
+  --namespace monitoring \
+  --values monitoring/values.yaml \
+  --wait --timeout 30m --cleanup-on-fail
+```
+
+**Apply Monitoring Resources:**
+
+```bash
+kubectl apply -f monitoring/kserve-podmonitor.yaml
+kubectl apply -f monitoring/kserve-dashboard-configmap.yaml
+```
+
+### Access the Services
+
+**ArgoCD UI:**
+
+```bash
+kubectl port-forward service/argocd-server -n argocd 8085:443
+# Open: https://localhost:8085
+# Username: admin
+```
+
+Retrieve the initial admin password:
+
+```powershell
+$ARGO_PASSWORD = kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}"
+[System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($ARGO_PASSWORD))
+```
+
+**Grafana UI:**
+
+```bash
+kubectl port-forward service/monitoring-grafana -n monitoring 3000:80
+# Open: http://localhost:3000
+# Username: admin  |  Password: (from grafana-secret.yaml)
+```
+
+**Prometheus UI:**
+
+```bash
+kubectl port-forward service/monitoring-kube-prometheus-prometheus -n monitoring 9090:9090
+# Open: http://localhost:9090 → Status > Targets
+```
+
+### Validation
+
+```bash
+minikube status
+kubectl get nodes
+kubectl get pods -A
+helm list -A
+kubectl top nodes
+kubectl top pods -A
+```
+
+Expected:
+
+```
+NAMESPACE    NAME         STATUS
+argocd       argocd       deployed
+monitoring   monitoring   deployed
+```
+
+---
+
+## Task 4: Kubernetes Deployment with Helm
+
+Two Helm charts are maintained in `helm/`:
+
+- `helm/ocr-model` — KServe OCR model backend (ClusterIP on 8080)
+- `helm/api-gateway` — FastAPI gateway (NodePort on 8001)
+
+### Kubernetes Resources Per Chart
+
+| Resource | Purpose |
+|---|---|
+| `Deployment` | Manages pod replicas; configured with liveness/readiness probes |
+| `Service` | Exposes the pod (ClusterIP for model, NodePort for gateway) |
+| `ConfigMap` | Injects `KSERVE_URL` env var into gateway without hardcoding |
+| `ServiceAccount` | Dedicated non-default account per pod |
+| `Role` + `RoleBinding` | Least-privilege RBAC for each service account |
+
+### Security Contexts
+
+All containers are hardened:
+
+```yaml
+securityContext:
+  runAsNonRoot: true
+  capabilities:
+    drop: [ALL]
+  readOnlyRootFilesystem: true
+```
+
+### Manual Helm Deployment
+
+```bash
+# Deploy OCR model first (backend)
+helm upgrade --install ocr-model ./helm/ocr-model \
+  --namespace ocr --create-namespace
+
+# Deploy API gateway
+helm upgrade --install api-gateway ./helm/api-gateway \
+  --namespace ocr
+
+# Verify
+kubectl get all -n ocr
+
+# Port-forward to test
+kubectl port-forward svc/api-gateway -n ocr 8001:8001
+# Open: http://localhost:8001/docs
+```
+
+### Cleanup
+
+```bash
+helm uninstall api-gateway -n ocr
+helm uninstall ocr-model -n ocr
+```
+
+---
+
+## Task 5: KServe Model Monitoring
+
+### Prometheus PodMonitor (`monitoring/kserve-podmonitor.yaml`)
+
+Instructs the Prometheus Operator to scrape the OCR model pods on port `8080/metrics`:
+
+```yaml
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: kserve-ocr-model
+  namespace: monitoring
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ocr-model
+  podMetricsEndpoints:
+    - port: http
+      path: /metrics
+```
+
+### Grafana Dashboard — KServe OCR Model Monitoring
+
+The dashboard (`monitoring/kserve-dashboard-configmap.yaml`) is auto-loaded by the Grafana sidecar (enabled in `monitoring/values.yaml`). It includes:
+
+| Panel | PromQL |
+|---|---|
+| Total Inference Requests | `sum(increase(kserve_request_total[5m]))` |
+| Request Rate (req/s) | `sum(rate(kserve_request_total[1m]))` |
+| Inference Latency (p95) | `histogram_quantile(0.95, rate(kserve_request_duration_seconds_bucket[5m]))` |
+| Error Rate (%) | `sum(rate(kserve_request_total{status!="200"}[5m])) / sum(rate(kserve_request_total[5m])) * 100` |
+| CPU Usage | `sum(rate(container_cpu_usage_seconds_total{pod=~"ocr-model.*"}[5m])) by (pod)` |
+| Memory Usage | `sum(container_memory_working_set_bytes{pod=~"ocr-model.*"}) by (pod)` |
+
+---
+
+## Task 6: GitOps with ArgoCD
+
+### How It Works
+
+ArgoCD **continuously watches your GitHub repository**. When you push changes to `helm/api-gateway` or `helm/ocr-model`, ArgoCD detects the diff and automatically applies it to the cluster:
+
+```
+git push main → ArgoCD detects change → helm upgrade → cluster updated
+```
+
+With `selfHeal: true`, any manual changes made directly to the cluster are automatically reverted to match the Git state.
+
+### Apply ArgoCD Resources
+
+After ArgoCD is installed and running:
+
+```bash
+# Apply the project boundary first
+kubectl apply -f argocd/project.yaml
+
+# Then apply the Application definitions
+kubectl apply -f argocd/apps.yaml
+```
+
+### ArgoCD Applications (`argocd/apps.yaml`)
+
+```yaml
+# api-gateway Application
+repoURL: https://github.com/FlorinNatha/ocr-devops-assignment.git
+targetRevision: main
+path: helm/api-gateway          # Helm chart path inside the repo
+destination: ocr namespace
+
+# ocr-model Application
+repoURL: https://github.com/FlorinNatha/ocr-devops-assignment.git
+targetRevision: main
+path: helm/ocr-model
+destination: ocr namespace
+```
+
+Both applications have:
+- `automated.prune: true` — removes deleted resources
+- `automated.selfHeal: true` — reverts manual cluster changes
+- `retry.limit: 5` — retries failed syncs with exponential backoff
+
+### Monitor Sync Status
+
+```bash
+kubectl get applications -n argocd
+kubectl describe application api-gateway -n argocd
+```
+
+---
+
+## Troubleshooting
+
+### ArgoCD — `Progress deadline exceeded`
+
+**Cause:** Kubernetes deployment times out (default 600s) while images are still downloading.
+
+**Fix:** The `argocd/values.yaml` sets `progressDeadlineSeconds: 1200` for all components. The setup script also pre-pulls the image with `minikube image pull` before Helm starts the clock.
+
+### ArgoCD — `ContainerCreating` for 10+ minutes
+
+**Cause:** The `quay.io/argoproj/argocd:v3.5.1` image (~250 MB) is being pulled on a slow connection.
+
+**Fix:**
+
+```bash
+minikube image pull quay.io/argoproj/argocd:v3.5.1
+```
+
+Wait for the pull to complete, then re-run the setup script.
+
+### Helm install fails with `pending-install`
+
+```bash
+helm history argocd -n argocd
+helm uninstall argocd -n argocd
+# Then re-run setup script
+```
+
+### Grafana remains unhealthy
+
+```bash
+kubectl logs deployment/monitoring-grafana -n monitoring -c grafana --tail=100
+```
+
+Confirm `monitoring/values.yaml` has `disable_plugins: tempo` to prevent slow startup.
+
+### Metrics API not available
+
+```bash
+kubectl get pod -n kube-system -l k8s-app=metrics-server
+kubectl get events -n kube-system --sort-by=.lastTimestamp
+```
+
+Wait for the Metrics Server pod to become `Ready`, then retry `kubectl top nodes`.
+
+---
+
+## Secret File Templates
+
+These files are **git-ignored** — create them locally before running the setup script.
+
+**`argocd/redis-secret.yaml`:**
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: argocd-redis
+  namespace: argocd
+type: Opaque
+stringData:
+  auth: "replace-with-strong-password"
+```
+
+**`monitoring/grafana-secret.yaml`:**
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: grafana-admin-credentials
+  namespace: monitoring
+type: Opaque
+stringData:
+  admin-user: admin
+  admin-password: "replace-with-strong-password"
+```
+
+---
+
+## Completion Checklist
+
+| Task | Completion Criteria |
+|---|---|
+| **Task 1** | `POST http://localhost:8001/gateway/ocr` returns extracted text |
+| **Task 2** | Both Docker images built, tested locally, pushed to Docker Hub |
+| **Task 3** | `helm list -A` shows `argocd` and `monitoring` as `deployed` |
+| **Task 4** | `kubectl get all -n ocr` shows both services `Running` |
+| **Task 5** | `kubectl get applications -n argocd` shows both apps `Synced` and `Healthy` |
+| **Task 6** | Grafana dashboard shows OCR model metrics |
+| **Task 7** | This README with architecture diagram, implementation details, and step-by-step instructions |
+

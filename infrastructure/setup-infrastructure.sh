@@ -90,12 +90,21 @@ echo "Installing ArgoCD..."
 echo "  Applying ArgoCD Redis secret..."
 kubectl apply -f "$PROJECT_ROOT/argocd/redis-secret.yaml"
 
+# Pre-pull the ArgoCD image into Minikube's Docker daemon.
+# This prevents 'Progress deadline exceeded' errors caused by slow image pulls
+# triggering before the Deployment's progressDeadlineSeconds window closes.
+ARGOCD_VERSION="$(helm show chart argo/argo-cd | grep '^appVersion:' | awk '{print $2}')"
+echo "  Pre-pulling ArgoCD image v${ARGOCD_VERSION} into Minikube..."
+minikube image pull "quay.io/argoproj/argocd:v${ARGOCD_VERSION}" || \
+  echo "  ⚠️  Image pre-pull failed (non-fatal, Helm will pull during install)"
+
 helm upgrade --install argocd argo/argo-cd \
   --namespace "$ARGO_NAMESPACE" \
   --values "$PROJECT_ROOT/argocd/values.yaml" \
   --wait \
-  --timeout 20m \
+  --timeout 30m \
   --cleanup-on-fail
+
 
 echo "Applying Grafana admin credentials secret..."
 if kubectl get secret grafana-admin-credentials -n "$MONITORING_NAMESPACE" &>/dev/null; then

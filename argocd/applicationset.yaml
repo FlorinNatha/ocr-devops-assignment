@@ -1,0 +1,58 @@
+# ApplicationSet generates one ArgoCD Application per entry in the 'list' generator.
+# This is an alternative to manually writing two separate Application objects in apps.yaml.
+# It demonstrates the DRY (Don't Repeat Yourself) pattern for managing multiple services.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: ocr-services
+  namespace: argocd
+spec:
+  # The list generator creates one Application for each item in the list.
+  generators:
+    - list:
+        elements:
+          - service: api-gateway
+            chartPath: helm/api-gateway
+          - service: ocr-model
+            chartPath: helm/ocr-model
+
+  # This template is used to render each Application object.
+  template:
+    metadata:
+      # '{{service}}' is replaced by each element's 'service' value.
+      name: "{{service}}"
+      namespace: argocd
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+      labels:
+        app.kubernetes.io/part-of: ocr-services
+        app.kubernetes.io/managed-by: applicationset
+    spec:
+      project: ocr-services
+
+      source:
+        repoURL: https://github.com/FlorinNatha/ocr-devops-assignment.git
+        targetRevision: main
+        # '{{chartPath}}' is replaced by each element's 'chartPath' value.
+        path: "{{chartPath}}"
+        helm:
+          valueFiles:
+            - values.yaml
+
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: ocr
+
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
+        retry:
+          limit: 5
+          backoff:
+            duration: 5s
+            factor: 2
+            maxDuration: 3m
