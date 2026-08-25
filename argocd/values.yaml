@@ -7,56 +7,63 @@ global:
 
 controller:
   replicas: 1
+  progressDeadlineSeconds: 1200   # allow 20 min for image pull on slow networks
   resources:
     requests:
-      cpu: 150m
-      memory: 384Mi
+      cpu: 250m
+      memory: 512Mi
     limits:
-      cpu: 800m
-      memory: 768Mi
+      cpu: 1000m
+      memory: 1Gi
 
 server:
   replicas: 1
+  progressDeadlineSeconds: 1200
   service:
     type: ClusterIP
   resources:
     requests:
-      cpu: 75m
-      memory: 192Mi
+      cpu: 100m
+      memory: 256Mi
     limits:
-      cpu: 500m
-      memory: 384Mi
+      cpu: 600m
+      memory: 512Mi
 
 repoServer:
   replicas: 1
+  progressDeadlineSeconds: 1200
   resources:
     requests:
-      cpu: 150m
-      memory: 384Mi
+      cpu: 200m
+      memory: 512Mi
     limits:
-      cpu: 800m
-      memory: 768Mi
+      cpu: 1000m
+      memory: 1Gi
 
 applicationSet:
   replicas: 1
+  progressDeadlineSeconds: 1200
   resources:
     requests:
-      cpu: 50m
-      memory: 128Mi
+      cpu: 100m
+      memory: 192Mi
     limits:
-      cpu: 300m
-      memory: 256Mi
+      cpu: 400m
+      memory: 384Mi
 
 redis:
   image:
     imagePullPolicy: IfNotPresent
+  # Use the pre-created argocd-redis secret instead of the generated one.
+  # This works in tandem with redisSecretInit.enabled=false.
+  existingSecret: argocd-redis
   resources:
     requests:
-      cpu: 75m
-      memory: 96Mi
+      cpu: 100m
+      memory: 128Mi
     limits:
       cpu: 300m
-      memory: 192Mi
+      memory: 256Mi
 
 notifications:
   enabled: false

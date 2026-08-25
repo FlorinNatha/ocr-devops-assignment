@@ -1,0 +1,41 @@
+# AppProject defines the security boundary for all OCR services managed by ArgoCD.
+# It restricts which source repositories, destination clusters, and namespaces
+# are permitted, following the principle of least privilege.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: ocr-services
+  namespace: argocd
+  # Finalizer prevents the project from being deleted while Applications still reference it.
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: "OCR Services - API Gateway and OCR Model"
+
+  # Only allow syncing from this specific GitHub repository.
+  sourceRepos:
+    - https://github.com/FlorinNatha/ocr-devops-assignment.git
+
+  # Only allow deploying to the local in-cluster into the 'ocr' namespace.
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: ocr
+
+  # Allow all standard Kubernetes and ArgoCD resource kinds.
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+
+  namespaceResourceWhitelist:
+    - group: "apps"
+      kind: Deployment
+    - group: ""
+      kind: Service
+    - group: ""
+      kind: ConfigMap
+    - group: ""
+      kind: ServiceAccount
+    - group: "rbac.authorization.k8s.io"
+      kind: Role
+    - group: "rbac.authorization.k8s.io"
+      kind: RoleBinding

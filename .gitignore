@@ -40,3 +40,7 @@ build/
 # Local Kubernetes and Docker overrides
 docker-compose.override.yml
 kind-config.yaml
+
+# Kubernetes secret manifests with real credentials (apply locally, never commit)
+monitoring/grafana-secret.yaml
+argocd/redis-secret.yaml

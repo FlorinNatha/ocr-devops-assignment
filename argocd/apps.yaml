@@ -1,0 +1,90 @@
+# Application CRD for the FastAPI API Gateway service.
+# ArgoCD watches the helm/api-gateway path in the Git repo and automatically
+# syncs any changes to the 'ocr' namespace in the local Minikube cluster.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: api-gateway
+  namespace: argocd
+  # Ensures Kubernetes resources are cleaned up when this Application is deleted.
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  labels:
+    app.kubernetes.io/part-of: ocr-services
+spec:
+  project: ocr-services
+
+  source:
+    repoURL: https://github.com/FlorinNatha/ocr-devops-assignment.git
+    targetRevision: main
+    # Path to the Helm chart inside the repository.
+    path: helm/api-gateway
+    helm:
+      # Use the chart's default values.yaml. Override specific values here if needed.
+      valueFiles:
+        - values.yaml
+
+  destination:
+    # Deploy to the local in-cluster Kubernetes (Minikube).
+    server: https://kubernetes.default.svc
+    namespace: ocr
+
+  syncPolicy:
+    automated:
+      # Automatically deploy when Git changes are detected.
+      prune: true
+      # Revert any manual changes made directly to the cluster (drift correction).
+      selfHeal: true
+    syncOptions:
+      # Create the 'ocr' namespace automatically if it does not exist.
+      - CreateNamespace=true
+      # Use server-side apply to handle large resource manifests.
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+
+---
+# Application CRD for the KServe OCR Model service.
+# Mirrors the api-gateway Application configuration but points to the
+# helm/ocr-model chart path.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ocr-model
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  labels:
+    app.kubernetes.io/part-of: ocr-services
+spec:
+  project: ocr-services
+
+  source:
+    repoURL: https://github.com/FlorinNatha/ocr-devops-assignment.git
+    targetRevision: main
+    path: helm/ocr-model
+    helm:
+      valueFiles:
+        - values.yaml
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ocr
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

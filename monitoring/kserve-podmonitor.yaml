@@ -1,0 +1,33 @@
+# ---------------------------------------------------------------------------
+# PodMonitor — scrape KServe OCR model metrics
+#
+# Prometheus Operator (deployed by kube-prometheus-stack) watches for
+# PodMonitor resources that match its podMonitorSelector.  This resource
+# targets every pod labelled app.kubernetes.io/name=ocr-model in the
+# "ocr" namespace and scrapes the /metrics endpoint on port 8080.
+#
+# The OCR model exposes built-in KServe / torchserve metrics there,
+# including inference request counts, latency histograms, and error codes.
+# ---------------------------------------------------------------------------
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: ocr-model-podmonitor
+  namespace: monitoring          # must live in the same ns as Prometheus Operator
+  labels:
+    # kube-prometheus-stack matches PodMonitors by this label by default.
+    release: monitoring
+spec:
+  # Discover pods in the ocr namespace.
+  namespaceSelector:
+    matchNames:
+      - ocr
+  # Target pods that belong to the OCR model Helm release.
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ocr-model
+  podMetricsEndpoints:
+    - port: http          # matches the named port in the Deployment (containerPort 8080)
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s

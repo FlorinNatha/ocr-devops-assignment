@@ -1,0 +1,295 @@
+# ---------------------------------------------------------------------------
+# Grafana Dashboard — KServe OCR Model Monitoring
+#
+# This ConfigMap is picked up automatically by the Grafana sidecar
+# (enabled in monitoring/values.yaml via sidecar.dashboards.enabled=true).
+# Any ConfigMap in the monitoring namespace with label grafana_dashboard="1"
+# is loaded at runtime — no Grafana restart needed.
+#
+# Dashboard sections
+#   1. Request Volume   — total inference requests (counter)
+#   2. Error Rate       — non-2xx responses as a rate
+#   3. Latency          — P50 / P90 / P99 histogram quantiles (ms)
+#   4. Resource Usage   — CPU seconds rate & memory working set (per pod)
+# ---------------------------------------------------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kserve-ocr-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"      # sidecar label — Grafana loads this automatically
+    app.kubernetes.io/part-of: monitoring
+data:
+  kserve-ocr-dashboard.json: |
+    {
+      "__inputs": [],
+      "__requires": [],
+      "annotations": { "list": [] },
+      "description": "KServe OCR model — inference request volume, error rate, latency and resource utilisation",
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 1,
+      "id": null,
+      "links": [],
+      "panels": [
+
+        {
+          "collapsed": false,
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+          "id": 1,
+          "title": "1 · Request Volume",
+          "type": "row"
+        },
+
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "description": "Total number of inference requests received by the OCR model since the pod started.",
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "yellow", "value": 1000 },
+                  { "color": "red",    "value": 10000 }
+                ]
+              },
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+          "id": 2,
+          "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+          "title": "Total Inference Requests",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "sum(revision_request_count{namespace=\"ocr\"})",
+              "legendFormat": "Total Requests",
+              "refId": "A"
+            }
+          ]
+        },
+
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "description": "Rate of inference requests per second over the last 5 minutes.",
+          "fieldConfig": {
+            "defaults": { "unit": "reqps", "color": { "mode": "palette-classic" } },
+            "overrides": []
+          },
+          "gridPos": { "h": 8, "w": 18, "x": 6, "y": 1 },
+          "id": 3,
+          "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+          "title": "Inference Request Rate (req/s)",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "sum(rate(revision_request_count{namespace=\"ocr\"}[5m])) by (revision_name)",
+              "legendFormat": "{{ revision_name }}",
+              "refId": "A"
+            }
+          ]
+        },
+
+        {
+          "collapsed": false,
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 },
+          "id": 10,
+          "title": "2 · Error Rate & Request Status",
+          "type": "row"
+        },
+
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "description": "Rate of failed (non-2xx) inference requests per second.",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "reqps",
+              "color": { "mode": "thresholds" },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "orange", "value": 0.01 },
+                  { "color": "red",    "value": 0.1 }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 4, "w": 6, "x": 0, "y": 10 },
+          "id": 11,
+          "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+          "title": "Error Rate (req/s)",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "sum(rate(revision_request_count{namespace=\"ocr\", response_code_class!=\"2xx\"}[5m]))",
+              "legendFormat": "Error Rate",
+              "refId": "A"
+            }
+          ]
+        },
+
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "description": "Breakdown of request rate by HTTP response class (2xx, 4xx, 5xx).",
+          "fieldConfig": {
+            "defaults": { "unit": "reqps", "color": { "mode": "palette-classic" } },
+            "overrides": []
+          },
+          "gridPos": { "h": 8, "w": 18, "x": 6, "y": 10 },
+          "id": 12,
+          "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+          "title": "Request Rate by Response Class",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "sum(rate(revision_request_count{namespace=\"ocr\"}[5m])) by (response_code_class)",
+              "legendFormat": "{{ response_code_class }}",
+              "refId": "A"
+            }
+          ]
+        },
+
+        {
+          "collapsed": false,
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 },
+          "id": 20,
+          "title": "3 · Inference Latency",
+          "type": "row"
+        },
+
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "description": "Inference latency percentiles (P50, P90, P99) in milliseconds over a 5-minute window.",
+          "fieldConfig": {
+            "defaults": { "unit": "ms", "color": { "mode": "palette-classic" } },
+            "overrides": []
+          },
+          "gridPos": { "h": 8, "w": 24, "x": 0, "y": 19 },
+          "id": 21,
+          "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+          "title": "Inference Latency Percentiles (ms)",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.50, sum(rate(revision_request_latencies_bucket{namespace=\"ocr\"}[5m])) by (le))",
+              "legendFormat": "P50",
+              "refId": "A"
+            },
+            {
+              "expr": "histogram_quantile(0.90, sum(rate(revision_request_latencies_bucket{namespace=\"ocr\"}[5m])) by (le))",
+              "legendFormat": "P90",
+              "refId": "B"
+            },
+            {
+              "expr": "histogram_quantile(0.99, sum(rate(revision_request_latencies_bucket{namespace=\"ocr\"}[5m])) by (le))",
+              "legendFormat": "P99",
+              "refId": "C"
+            }
+          ]
+        },
+
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "description": "Latency heatmap — distribution of request durations over time.",
+          "fieldConfig": {
+            "defaults": { "color": { "mode": "scheme", "scheme": "Blues" }, "custom": { "fillOpacity": 80, "lineWidth": 0 } },
+            "overrides": []
+          },
+          "gridPos": { "h": 8, "w": 24, "x": 0, "y": 27 },
+          "id": 22,
+          "options": { "calculate": false, "cellGap": 1, "color": { "scheme": "Blues" }, "tooltip": { "mode": "single" } },
+          "title": "Latency Heatmap",
+          "type": "heatmap",
+          "targets": [
+            {
+              "expr": "sum(increase(revision_request_latencies_bucket{namespace=\"ocr\"}[$__rate_interval])) by (le)",
+              "legendFormat": "{{ le }}",
+              "refId": "A",
+              "format": "heatmap"
+            }
+          ]
+        },
+
+        {
+          "collapsed": false,
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 35 },
+          "id": 30,
+          "title": "4 · Resource Utilisation",
+          "type": "row"
+        },
+
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "description": "CPU usage rate (cores) per OCR model pod over the last 5 minutes.",
+          "fieldConfig": {
+            "defaults": { "unit": "cores", "color": { "mode": "palette-classic" } },
+            "overrides": []
+          },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 36 },
+          "id": 31,
+          "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+          "title": "CPU Usage per Pod (cores)",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"ocr\", container=\"model\"}[5m])) by (pod)",
+              "legendFormat": "{{ pod }}",
+              "refId": "A"
+            }
+          ]
+        },
+
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "description": "Memory working set (bytes) per OCR model pod.",
+          "fieldConfig": {
+            "defaults": { "unit": "bytes", "color": { "mode": "palette-classic" } },
+            "overrides": []
+          },
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 36 },
+          "id": 32,
+          "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+          "title": "Memory Working Set per Pod",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "sum(container_memory_working_set_bytes{namespace=\"ocr\", container=\"model\"}) by (pod)",
+              "legendFormat": "{{ pod }}",
+              "refId": "A"
+            }
+          ]
+        }
+
+      ],
+      "refresh": "30s",
+      "schemaVersion": 38,
+      "tags": ["kserve", "ocr", "inference"],
+      "templating": {
+        "list": [
+          {
+            "current": {},
+            "hide": 0,
+            "includeAll": false,
+            "label": "Datasource",
+            "name": "datasource",
+            "options": [],
+            "query": "prometheus",
+            "refresh": 1,
+            "type": "datasource"
+          }
+        ]
+      },
+      "time": { "from": "now-1h", "to": "now" },
+      "timepicker": {},
+      "timezone": "browser",
+      "title": "KServe OCR Model Monitoring",
+      "uid": "kserve-ocr-monitoring",
+      "version": 1
+    }
