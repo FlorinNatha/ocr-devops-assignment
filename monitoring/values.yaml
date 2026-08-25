@@ -22,6 +22,12 @@ grafana:
   grafana.ini:
     plugins:
       disable_plugins: tempo
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      labelValue: "1"
+      searchNamespace: ALL
   persistence: #to store data even if the pod is deleted (used in production)
     enabled: false
   resources:

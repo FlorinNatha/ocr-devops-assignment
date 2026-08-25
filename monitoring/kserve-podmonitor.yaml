@@ -24,10 +24,22 @@ spec:
       - ocr
   # Target pods that belong to the OCR model Helm release.
   selector:
-    matchLabels:
-      app.kubernetes.io/name: ocr-model
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values:
+          - ocr-model
+          - api-gateway
   podMetricsEndpoints:
-    - port: http          # matches the named port in the Deployment (containerPort 8080)
+    - targetPort: 8080
       path: /metrics
-      interval: 30s
+      interval: 15s
+      scrapeTimeout: 10s
+    - targetPort: 8082
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s
+    - targetPort: 8001
+      path: /metrics
+      interval: 15s
       scrapeTimeout: 10s
