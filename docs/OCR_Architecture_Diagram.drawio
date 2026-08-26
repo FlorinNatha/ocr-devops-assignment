@@ -1,0 +1,130 @@
+<mxfile host="app.diagrams.net" modified="2026-08-26T00:00:00.000Z" agent="Claude" version="24.0.0" type="device">
+  <diagram name="OCR DevOps Architecture" id="ocr-arch-1">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="950" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- ================= EXTERNAL ACTORS ================= -->
+        <mxCell id="client" value="Client&#10;(Postman / User)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#666666;fontSize=13;fontStyle=1;arcSize=12;" vertex="1" parent="1">
+          <mxGeometry x="60" y="40" width="200" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="github" value="GitHub Repository&#10;(Helm charts, source)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#666666;fontSize=13;fontStyle=1;arcSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1080" y="40" width="220" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- ================= KUBERNETES CLUSTER OUTER BOUNDARY ================= -->
+        <mxCell id="k8s" value="Kubernetes Cluster (Minikube)" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;fillColor=none;strokeColor=#666666;verticalAlign=top;fontSize=15;fontStyle=1;align=left;spacingLeft=16;spacingTop=10;arcSize=6;" vertex="1" parent="1">
+          <mxGeometry x="60" y="160" width="1240" height="600" as="geometry" />
+        </mxCell>
+
+        <!-- ================= OCR NAMESPACE ================= -->
+        <mxCell id="ns_ocr" value="ocr namespace" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;fillColor=#F8F9FA;strokeColor=#999999;verticalAlign=top;fontSize=13;fontStyle=1;align=left;spacingLeft=14;spacingTop=8;arcSize=6;" vertex="1" parent="1">
+          <mxGeometry x="100" y="210" width="360" height="420" as="geometry" />
+        </mxCell>
+
+        <mxCell id="gateway" value="API Gateway&#10;FastAPI &#8226; Deployment + Service&#10;NodePort, Port 8001" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=13;fontStyle=1;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="130" y="260" width="300" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="model" value="OCR Model&#10;KServe V2 Inference &#8226; Deployment + Service&#10;ClusterIP, Port 8080" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=13;fontStyle=1;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="130" y="400" width="300" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="tesseract" value="Tesseract OCR Engine" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontSize=12;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="180" y="510" width="200" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- ================= ARGOCD NAMESPACE ================= -->
+        <mxCell id="ns_argocd" value="argocd namespace" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;fillColor=#F8F9FA;strokeColor=#999999;verticalAlign=top;fontSize=13;fontStyle=1;align=left;spacingLeft=14;spacingTop=8;arcSize=6;" vertex="1" parent="1">
+          <mxGeometry x="500" y="210" width="320" height="160" as="geometry" />
+        </mxCell>
+
+        <mxCell id="argocd" value="ArgoCD&#10;GitOps continuous deployment&#10;prune + selfHeal enabled" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontSize=13;fontStyle=1;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="530" y="260" width="260" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- ================= MONITORING NAMESPACE ================= -->
+        <mxCell id="ns_mon" value="monitoring namespace" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;fillColor=#F8F9FA;strokeColor=#999999;verticalAlign=top;fontSize=13;fontStyle=1;align=left;spacingLeft=14;spacingTop=8;arcSize=6;" vertex="1" parent="1">
+          <mxGeometry x="500" y="400" width="320" height="230" as="geometry" />
+        </mxCell>
+
+        <mxCell id="prometheus" value="Prometheus&#10;kube-prometheus-stack&#10;Scrapes /metrics via PodMonitor" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontSize=13;fontStyle=1;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="530" y="440" width="260" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="grafana" value="Grafana&#10;OCR / KServe monitoring dashboard" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontSize=13;fontStyle=1;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="530" y="540" width="260" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- ================= HELM (packaging layer, floating note) ================= -->
+        <mxCell id="helm" value="Helm charts&#10;helm/api-gateway, helm/ocr-model" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F0F0F0;strokeColor=#999999;fontSize=11;fontStyle=2;dashed=1;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="880" y="260" width="220" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- ================= REQUEST FLOW EDGES ================= -->
+        <mxCell id="e1" value="POST /gateway/ocr&#10;multipart/form-data" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=11;strokeColor=#333333;rounded=0;" edge="1" parent="1" source="client" target="gateway">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e2" value="Base64-encoded image&#10;KServe V2 infer request" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=11;strokeColor=#333333;rounded=0;" edge="1" parent="1" source="gateway" target="model">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e3" value="Image bytes" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=11;strokeColor=#333333;rounded=0;" edge="1" parent="1" source="model" target="tesseract">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e4" value="Extracted text" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=11;strokeColor=#82B366;dashed=1;rounded=0;exitX=0;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="model" target="gateway">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="100" y="440" />
+              <mxPoint x="100" y="300" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="e5" value="JSON response&#10;HTTP 200" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=11;strokeColor=#6C8EBF;dashed=1;rounded=0;exitX=0;exitY=0.3;entryX=0;entryY=0.7;" edge="1" parent="1" source="gateway" target="client">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="70" y="290" />
+              <mxPoint x="70" y="80" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- ================= GITOPS FLOW EDGES ================= -->
+        <mxCell id="e6" value="git push / poll" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=11;strokeColor=#9673A6;rounded=0;" edge="1" parent="1" source="github" target="argocd">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e7" value="reads" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=11;strokeColor=#9673A6;rounded=0;" edge="1" parent="1" source="argocd" target="helm">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e8" value="Helm sync" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=11;strokeColor=#9673A6;rounded=0;exitX=0;exitY=0.5;entryX=1;entryY=0.3;" edge="1" parent="1" source="argocd" target="gateway">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e9" value="Helm sync" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=11;strokeColor=#9673A6;rounded=0;exitX=0;exitY=0.7;entryX=1;entryY=0.5;" edge="1" parent="1" source="argocd" target="model">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ================= MONITORING FLOW EDGES ================= -->
+        <mxCell id="e10" value="/metrics scrape" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=11;strokeColor=#D79B00;rounded=0;exitX=1;exitY=0.7;entryX=0;entryY=0.3;" edge="1" parent="1" source="gateway" target="prometheus">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e11" value="/metrics scrape" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=11;strokeColor=#D79B00;rounded=0;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="model" target="prometheus">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e12" value="PromQL queries" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=11;strokeColor=#D79B00;rounded=0;" edge="1" parent="1" source="prometheus" target="grafana">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
